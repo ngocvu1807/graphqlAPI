@@ -2,6 +2,7 @@ const express = require('express');
 const schema = require('./schema/todoSchema');
 const graphqlHTTP = require('express-graphql');
 const mongoose = require('mongoose');
+const isAuthenticated = require('../middleware/is-auth');
 const cors = require('cors');
 const app = express();
 
@@ -13,6 +14,8 @@ mongoose.connect(
     console.log('connected to database');
   }
 );
+
+app.use(isAuthenticated);
 
 app.use(
   '/graphql',

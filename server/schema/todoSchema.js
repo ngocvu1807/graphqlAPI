@@ -5,7 +5,7 @@ const _ = require('lodash');
 const bcrypt = require('bcryptjs');
 const Todo = require('../models/todo');
 const Users = require('../models/User');
-
+const jwt = require('jsonwebtoken');
 const {
   GraphQLObjectType,
   GraphQLString,
@@ -40,6 +40,16 @@ const UserType = new GraphQLObjectType({
     }
   })
 });
+
+const AuthData = new GraphQLObjectType({
+  name: 'AuthData',
+  fields: () => ({
+    userId: { type: GraphQLID },
+    token: { type: GraphQLString },
+    tokenExpirixy: { type: GraphQLInt }
+  })
+});
+
 const user = userId => {
   return Users.findById(userId)
     .then(user => {
@@ -133,6 +143,33 @@ const RootQuery = new GraphQLObjectType({
           console.log(err.message);
         }
       }
+    },
+    login: {
+      type: AuthData,
+      args: {
+        email: { type: GraphQLString },
+        password: { type: GraphQLString }
+      },
+      async resolve(parent, args) {
+        const userData = await Users.findOne({
+          email: args.email
+        });
+        if (!userData) {
+          throw new Error('user doesnt exist');
+        }
+        const isEqual = await bcrypt.compare(args.password, userData.password);
+        if (!isEqual) {
+          throw new Error('Password is incorrect');
+        }
+        const token = jwt.sign(
+          { userId: userData.id, email: userData.email },
+          'secretkey',
+          {
+            expiresIn: '1h'
+          }
+        );
+        return { userId: userData.id, token: token, tokenExpirixy: 1 };
+      }
     }
   }
 });
@@ -146,11 +183,14 @@ const RootMutation = new GraphQLObjectType({
       args: {
         name: { type: new GraphQLNonNull(GraphQLString) }
       },
-      resolve(parent, args) {
+      resolve(parent, args, req) {
+        if (!req.isAuthenticated) {
+          throw new Error('Unauthorized');
+        }
         let todo = new Todo({
           isDone: false,
           name: args.name,
-          creator: '5e40c37a729d763c31914fa9'
+          creator: req.userId
         });
         let newTodo;
         return todo
@@ -161,7 +201,7 @@ const RootMutation = new GraphQLObjectType({
               id: result._id,
               creator: user.bind(this, result.creator)
             };
-            return Users.findById('5e40c37a729d763c31914fa9');
+            return Users.findById(req.userId);
           })
           .then(user => {
             if (!user) {
